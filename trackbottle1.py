@@ -2,9 +2,16 @@
 # Visual Servoing Robotic Arm
 # Created by: AL, TAP, SFMS
 # Hardware:
-#    Kinova Kortex Lite Gen 3
+#   Kinova Kortex Lite Gen 3
+#   Intel L515
 #################################################
+#settings
 
+KP=0.1
+KI=100
+KD=50
+
+#################################################
 import pyrealsense2 as rs
 import numpy as np
 import cv2
@@ -99,7 +106,14 @@ follow = False
 moveTowards = False
 startTime = perf_counter_ns()
 prevLoopTime = perf_counter_ns()
-
+integral_X=0
+integral_Y=0
+derivative_X=0
+derivative_Y=0
+PIDoutput_X=0
+PIDoutput_X=0
+prevError_X=0
+prevError_Y=0
 
 config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 
@@ -120,9 +134,9 @@ with utilities.DeviceConnection.createTcpConnection(args) as router:
     time.sleep(5)
     try:
         while True:
-            #timeDelta = (perf_counter_ns() - prevLoopTime) / 1e9  #[sec]
-            #prevLoopTime = perf_counter_ns()
-            #secondsSinceStart = (perf_counter_ns() - startTime) / 1e9
+            timeDelta = (perf_counter_ns() - prevLoopTime) / 1e9  #[sec]
+            prevLoopTime = perf_counter_ns()
+            secondsSinceStart = (perf_counter_ns() - startTime) / 1e9
             st = time.time()
             # Wait for coherent pair of frames: depth and color
             frames = pipeline.wait_for_frames()
@@ -163,20 +177,34 @@ with utilities.DeviceConnection.createTcpConnection(args) as router:
             #    x,y,z = get_cart(anglex, angley, dist)
                 #detectRate = (detectTime-lastDetectTime)/ 1e9
                 #lastDetectTime=detectTime
-                print('xdist: ' + str(round(xdist,2)) + '\t' + 'ydist: ' + str(round(ydist,2)) + '\t')# + "loopRate: " + str(timeDelta))
+                print('xdist: ' + str(round(xdist,2)) + '\t' + 'ydist: ' + str(round(ydist,2)) + '\t' + "timeDelta: " + str(timeDelta))
                 
                 cv2.rectangle(color_image, (int(obj.xmin), int(obj.ymin)), (int(obj.xmax), int(obj.ymax)), (0,255,0),2)
                 cv2.circle(color_image, (int(middle_x), int(middle_y)), 5, (0, 255, 0), 2)
                 cv2.circle(color_image, (int(width/2), int(height/2)), 5, (0, 0, 255), 2)
                 cv2.line(color_image, (int(middle_x), int(middle_y)), (int(width/2), int(height/2)), (0,0,255), 2)
 
+                 #PID Controller X
+                target_X = 0
+                error_X = target_X - xdist
+                integral_X += error_X * timeDelta
+                derivative_X = (error_X - prevError_X) / timeDelta
+                prevError_X = error_X
+                PIDoutput_X = KP * error_X + KI * integral_X + KD * derivative_X
                 
-                
-                   
+                #PID Controller Y
+                target_Y = 150
+                error_Y = target_Y - ydist
+                integral_Y += error_Y * timeDelta
+                derivative_Y = (error_Y - prevError_Y) / timeDelta
+                prevError_Y = error_Y
+                PIDoutput_Y = KP * error_Y + KI * integral_Y + KD * derivative_Y
+                print("ok")
                 yOffset = 150
                 Kp = 0.1
                 speedx = -Kp * xdist
-                speedy = -Kp * (ydist-yOffset)
+                #speedy = -Kp * (ydist-yOffset)
+                speedy = 0
                 deadband = 2 
                 if(speedx > deadband):
                     speedx = deadband
