@@ -48,7 +48,7 @@ try:
            #stop_inf = time.time()
             objs = result.pandas().xyxy[0]
             #objs_name = objs.loc[objs['name'] == 'bottle']
-            objs_name = objs.loc[objs['name'] == 'box']
+            objs_name = objs.loc[objs['name'] == 'bottle']
             
             try:
                 obj = objs_name.iloc[0]
