@@ -6,9 +6,11 @@
 #   Intel L515
 #################################################
 #settings
+
 KP=0.1
 KI=100
 KD=50
+
 #################################################
 import pyrealsense2 as rs
 import numpy as np
@@ -19,7 +21,7 @@ import sys
 import os
 import threading
 
-from time import perf_counter_ns, sleep
+from time import perf_counter_ns
 
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
@@ -215,7 +217,7 @@ with utilities.DeviceConnection.createTcpConnection(args) as router:
                 #if(abs(xdist) > 7 and abs(ydist) > 7):
                 #if(abs(xdist) > 5 or abs(ydist) > 165 or abs(ydist) < 135):
                 #speeds = [speedx/50, speedy/50, 0.01, -speedy*2, speedx*2, 0]
-                time.sleep(0.14)
+
                 if(moveTowards == True):
                     speeds = [speedx/50, speedy/50, 0.01, -speedy*2, speedx*2, 0]
                 else:
