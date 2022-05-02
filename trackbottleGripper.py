@@ -21,7 +21,6 @@ def distance_to_camera (focalLength, knownWidth, pixelWidth):
     return distance
 
 from time import perf_counter_ns
-
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
 
