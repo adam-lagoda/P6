@@ -261,7 +261,7 @@ while True:
                     #if(abs(xdist) > 7 and abs(ydist) > 7):
                     if(D > 11):
                         closeToObject = False
-                        if(abs(xdist) > 5 or abs(ydist) > 165 or abs(ydist) < 135):
+                        if(abs(xdist) > 10 or abs(ydist) > 165 or abs(ydist) < 135):
                             speeds = [speedx/100, speedy/100, 0, -speedy*2, speedx*2, 0]
                             sendSpeed(base, speeds)
                         else:
