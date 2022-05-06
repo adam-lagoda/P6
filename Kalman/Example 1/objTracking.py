@@ -85,11 +85,11 @@ def main():
                 (x1, y1) = KF.update(centers[0])
 
                 # Draw a rectangle as the estimated object position
-                #cv2.rectangle(frame, (x1 - 15, y1 - 15), (x1 + 15, y1 + 15), (0, 0, 255), 2)
+                cv2.rectangle(color_image, (int(x1 - 15), int(y1 - 15)), (int(x1 + 15), int(y1 + 15)), (0, 0, 255), 2)
 
-                #cv2.putText(frame, "Estimated Position", (x1 + 15, y1 + 10), 0, 0.5, (0, 0, 255), 2)
-                #cv2.putText(frame, "Predicted Position", (x + 15, y), 0, 0.5, (255, 0, 0), 2)
-                #cv2.putText(frame, "Measured Position", (centers[0][0] + 15, centers[0][1] - 15), 0, 0.5, (0,191,255), 2)
+                #cv2.putText(color_image, "Estimated Position", (int(x1 + 15), int(y1 + 10)), 0, 0.5, (0, 0, 255), 2)
+                #cv2.putText(color_image, "Predicted Position", (int(x + 15), int(y)), 0, 0.5, (255, 0, 0), 2)
+                #cv2.putText(color_image, "Measured Position", (int(centers[0][0] + 15), int(centers[0][1] - 15)), 0, 0.5, (0,191,255), 2)
             cv2.namedWindow('RealSense',cv2.WINDOW_AUTOSIZE)
             cv2.imshow('image', color_image)
             key = cv2.waitKey(1)
