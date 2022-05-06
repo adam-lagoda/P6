@@ -29,7 +29,7 @@ import threading
 import pyrealsense2 as rs
 import utilities #2nd script, holds neccessary functions
 from charset_normalizer import detect
-from time import *
+from time import sleep, perf_counter_ns
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
 from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
@@ -188,7 +188,8 @@ config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 profile = pipeline.start(config)
 
 #Load the YOLO object detection model
-model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+#model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='C:\Users\bahar\Desktop\train 32\best.pt')  # local model
 time.sleep(5)
 print('Model has been downloaded and created')
@@ -237,7 +238,7 @@ while True:
                 #Use the created model to detect the object in the image, in this case a bottle
                 result = model(color_image)
                 objs = result.pandas().xyxy[0]
-                objs_name = objs.loc[objs['name'] == 'bottle'] #people
+                objs_name = objs.loc[objs['name'] == 'weed'] #bottle
                 
                 try:
                     #Calculate the middle point of the detected object, based on its bounding box dimensions
