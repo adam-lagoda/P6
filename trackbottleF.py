@@ -189,6 +189,7 @@ profile = pipeline.start(config)
 
 #Load the YOLO object detection model
 model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+#model = torch.hub.load('ultralytics/yolov5', 'custom', path='C:\Users\bahar\Desktop\train 32\best.pt')  # local model
 time.sleep(5)
 print('Model has been downloaded and created')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
