@@ -16,7 +16,9 @@ config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 # Start streaming
 profile = pipeline.start(config)
 
-model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+#model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
+
 time.sleep(5)
 print('model created')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -25,7 +27,9 @@ try:
         while True:
             st = time.time()
             # Wait for coherent pair of frames: depth and color
+            
             frames = pipeline.wait_for_frames()
+            
             #aligned_frames = align.process(frames)
             #aligned_depth_frame = aligned_frames.get_depth_frame()
             color_frame = frames.get_color_frame()
@@ -48,7 +52,7 @@ try:
            #stop_inf = time.time()
             objs = result.pandas().xyxy[0]
             #objs_name = objs.loc[objs['name'] == 'bottle']
-            objs_name = objs.loc[objs['name'] == 'bottle']
+            objs_name = objs.loc[objs['name'] == 'weed']
             
             try:
                 obj = objs_name.iloc[0]
