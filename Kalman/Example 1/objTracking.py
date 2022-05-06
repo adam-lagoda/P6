@@ -79,7 +79,7 @@ def main():
                 # Predict
                 (x, y) = KF.predict()
                 # Draw a rectangle as the predicted object position
-                #cv2.rectangle(frame, (x - 15, y - 15), (x + 15, y + 15), (255, 0, 0), 2)
+                cv2.rectangle(color_image, (int(x - 15), int(y - 15)), (int(x + 15), int(y + 15)), (255, 0, 0), 2)
                 
                 # Update
                 (x1, y1) = KF.update(centers[0])

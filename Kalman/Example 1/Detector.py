@@ -33,7 +33,7 @@ def detect(frame,debugMode):
 
     # Set the accepted minimum & maximum radius of a detected object
     min_radius_thresh= 3
-    max_radius_thresh= 30
+    max_radius_thresh= 300
 
     centers=[]
     for c in contours:
