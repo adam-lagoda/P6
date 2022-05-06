@@ -285,15 +285,15 @@ while True:
                     PIDoutput_Y = KP * error_Y + KI * integral_Y + KD * derivative_Y
                     
                     #Saturate the maximum output from the PID for both axis to 2m/s, as a sanity check
-                    deadband = 2 
-                    if(PIDoutput_X > deadband):
-                        PIDoutput_X = deadband
-                    if(PIDoutput_X < -deadband):
-                        PIDoutput_X = -deadband
-                    if(PIDoutput_Y > deadband):
-                        PIDoutput_Y = deadband
-                    if(PIDoutput_Y < -deadband):
-                        PIDoutput_Y = -deadband
+                    saturation = 2 
+                    if(PIDoutput_X > saturation):
+                        PIDoutput_X = saturation
+                    if(PIDoutput_X < -saturation):
+                        PIDoutput_X = -saturation
+                    if(PIDoutput_Y > saturation):
+                        PIDoutput_Y = saturation
+                    if(PIDoutput_Y < -saturation):
+                        PIDoutput_Y = -saturation
                     
                     #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
                     if(D>12):
