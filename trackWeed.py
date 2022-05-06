@@ -6,9 +6,9 @@
 #   Intel L515
 #################################################
 #PID coefficients setup
-KP=0.05
-KI=0
-KD=0
+KP=0.1
+KI=100
+KD=50
 #################################################
 #Camera lens parameters setup
 P_PIXEL_WIDTH = 43      #Pixel of object with distance D_initial #43 for fisheye #94 without
@@ -188,8 +188,8 @@ config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 profile = pipeline.start(config)
 
 #Load the YOLO object detection model
-model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
-#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
+#model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='C:\Users\bahar\Desktop\train 32\best.pt')  # local model
 time.sleep(5)
 print('Model has been downloaded and created')
@@ -242,7 +242,7 @@ while True:
                 #Use the created model to detect the object in the image, in this case a bottle
                 result = model(color_image)
                 objs = result.pandas().xyxy[0]
-                objs_name = objs.loc[objs['name'] == 'bottle'] #weed #bottle
+                objs_name = objs.loc[objs['name'] == 'weed'] #bottle
                 
                 try:
                     #Calculate the middle point of the detected object, based on its bounding box dimensions
@@ -296,13 +296,13 @@ while True:
                         PIDoutput_Y = -deadband
                     
                     #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
-                    if(D>12):
+                    if(grip == False):
                         closeToObject = False
                         if(abs(x_distance) > (target_X + 5) or abs(y_distance) > (target_Y + 15) or abs(y_distance) < (target_Y - 15)):
                             velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
                             sendSpeed(base, velocities)
                         else:
-                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0.05, -PIDoutput_Y*2, PIDoutput_X*2, 0]
+                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0.01, -PIDoutput_Y*2, PIDoutput_X*2, 0]
                             sendSpeed(base, velocities)                       
                     else:
                         closeToObject = True
