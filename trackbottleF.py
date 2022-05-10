@@ -1,19 +1,22 @@
 #################################################
 # Visual Servoing Robotic Arm
-# Created by: AL, TAP, SFMS
+# Created by: AL, TAP, SFMS // AIE6
 # Hardware:
 #   Kinova Kortex Lite Gen 3
 #   Intel L515
-#################################################
+##############################################KP=0.005KI=0KD=0###
 #PID coefficients setup
-KP=0.05
+KP=0.008 #0.025 #0.05 oscillating
 KI=0
 KD=0
+
+TARGET_X = 0
+TARGET_Y = 100
 #################################################
 #Camera lens parameters setup
-P_PIXEL_WIDTH = 43      #Pixel of object with distance D_initial #43 for fisheye #94 without
-D_KNOWN_DISTANCE = 52   #Measured distance from camera to object in cm #52 for fishye #40 without
-W_KNOWN_WIDTH = 5.7     #Known width of object in cm
+P_PIXEL_WIDTH = 157      #Pixel of object with distance D_initial #43 for fisheye #94 without
+D_KNOWN_DISTANCE = 46   #Measured distance from camera to object in cm #52 for fishye #40 without
+W_KNOWN_WIDTH = 6     #Known width of object in cm
 #################################################
 #Constants definitions
 TIMEOUT_DURATION = 20
@@ -27,6 +30,8 @@ import cv2
 import torch
 import threading
 import pyrealsense2 as rs
+import matplotlib.pyplot as plt
+import pandas as pd
 #import utilities #2nd script, holds neccessary functions
 from charset_normalizer import detect
 from time import sleep, perf_counter_ns
@@ -181,6 +186,10 @@ PIDoutput_X=0
 prevError_X=0
 prevError_Y=0
 
+timePlot = []
+dataX = []
+dataY = []
+
 #Setup the camera output parameters: 940x540 resolution, 8-bit brg color format, 30fps
 config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 
@@ -188,8 +197,8 @@ config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 profile = pipeline.start(config)
 
 #Load the YOLO object detection model
-model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
-#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
+#model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='C:\Users\bahar\Desktop\train 32\best.pt')  # local model
 time.sleep(5)
 print('Model has been downloaded and created')
@@ -219,6 +228,7 @@ while True:
                 #Capture timestamps, used for performance measurement and PID calculation
                 timeDelta = (perf_counter_ns() - prevLoopTime) / 1e9  #[sec]
                 prevLoopTime = perf_counter_ns() #[nanosec]
+                timePlot.append(prevLoopTime)
                 secondsSinceStart = (perf_counter_ns() - startTime) / 1e9 #[sec]
                 
                 st = time.time()
@@ -242,7 +252,7 @@ while True:
                 #Use the created model to detect the object in the image, in this case a bottle
                 result = model(color_image)
                 objs = result.pandas().xyxy[0]
-                objs_name = objs.loc[objs['name'] == 'bottle'] #weed #bottle
+                objs_name = objs.loc[objs['name'] == 'weed'] #weed #bottle
                 
                 try:
                     #Calculate the middle point of the detected object, based on its bounding box dimensions
@@ -253,7 +263,9 @@ while True:
                     #Calculate the distance from the middle of the camera frame view, to the middle of the object
                     x_distance = x_middle-width/2
                     y_distance = y_middle-height/2
-                    
+                    dataX.append(x_distance)
+                    dataY.append(y_distance)
+                    timePlot.append(prevLoopTime)
                     #Calculate the distance to the object, based on its width and camera's focal length
                     F = focal_length(P_PIXEL_WIDTH, D_KNOWN_DISTANCE, W_KNOWN_WIDTH)
                     W_object_width = obj.xmax-obj.xmin
@@ -269,16 +281,16 @@ while True:
                     cv2.line(color_image, (int(x_middle), int(y_middle)), (int(width/2), int(height/2)), (0,0,255), 2)
 
                     #PID Controller X
-                    target_X = 0
-                    error_X = target_X - x_distance
+                    #target_X = 0
+                    error_X = TARGET_X - x_distance
                     integral_X += error_X * timeDelta
                     derivative_X = (error_X - prevError_X) / timeDelta
                     prevError_X = error_X
                     PIDoutput_X = KP * error_X + KI * integral_X + KD * derivative_X
                     
                     #PID Controller Y
-                    target_Y = 150
-                    error_Y = target_Y - y_distance
+                    #target_Y = 150
+                    error_Y = TARGET_Y - y_distance
                     integral_Y += error_Y * timeDelta
                     derivative_Y = (error_Y - prevError_Y) / timeDelta
                     prevError_Y = error_Y
@@ -298,7 +310,7 @@ while True:
                     #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
                     if(D>12):
                         closeToObject = False
-                        if(abs(x_distance) > (target_X + 5) or abs(y_distance) > (target_Y + 15) or abs(y_distance) < (target_Y - 15)):
+                        if(abs(x_distance) > (TARGET_X + 5) or abs(y_distance) > (TARGET_Y + 5) or abs(y_distance) < (TARGET_Y - 5)):
                             velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
                             sendSpeed(base, velocities)
                         else:
@@ -343,4 +355,7 @@ while True:
                         follow = True        
         finally:
             #Stop streaming the camera preview
+            #plt.plot(timePlot, dataX)
+            data = pd.DataFrame({tuple(timePlot), tuple(dataX), tuple(dataY)})
+            data.to_excel('sample_data.xlsx', sheet_name='sheet1', index=False)
             pipeline.stop()
