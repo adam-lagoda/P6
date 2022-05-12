@@ -6,17 +6,20 @@
 #   Intel L515
 ##############################################KP=0.005KI=0KD=0###
 #PID coefficients setup
-KP=0.008 #0.025 #0.05 oscillating
-KI=0
-KD=0
+KP=0.025 #0.025 #0.05 oscillating #o.008 old
+KI=0.001
+KD=0.001
 
 TARGET_X = 0
-TARGET_Y = 100
+TARGET_Y = 170 #100 plant 150 bottle
+
+TARGET_Z = 10
+KP_Z = 0.005
 #################################################
 #Camera lens parameters setup
-P_PIXEL_WIDTH = 157      #Pixel of object with distance D_initial #43 for fisheye #94 without
-D_KNOWN_DISTANCE = 46   #Measured distance from camera to object in cm #52 for fishye #40 without
-W_KNOWN_WIDTH = 6     #Known width of object in cm
+P_PIXEL_WIDTH = 43      #Pixel of object with distance D_initial #43 for fisheye #94 without #plant 157
+D_KNOWN_DISTANCE = 52   #Measured distance from camera to object in cm #52 for fishye #40 without #plant 46
+W_KNOWN_WIDTH = 5.7     #Known width of object in cm 5.7 #plant 6
 #################################################
 #Constants definitions
 TIMEOUT_DURATION = 20
@@ -25,6 +28,7 @@ TIMEOUT_DURATION = 20
 import os
 import sys
 import time
+from turtle import delay
 import numpy as np
 import cv2
 import torch
@@ -165,6 +169,13 @@ def home_position(base):
         print("Timeout on action notification wait")
     return finished
 
+def saturation(variable, limit):
+    if(variable > limit):
+        variable = limit
+    if(variable < -limit):
+        variable = -limit
+    return variable
+
 # Configure depth and color streams
 pipeline = rs.pipeline()
 config = rs.config()
@@ -191,14 +202,14 @@ dataX = []
 dataY = []
 
 #Setup the camera output parameters: 940x540 resolution, 8-bit brg color format, 30fps
-config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
-
+#config.enable_stream(rs.stream.color, 940, 540, rs.format.bgr8, 60)
+config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
 #Start streaming the camera preview
 profile = pipeline.start(config)
 
 #Load the YOLO object detection model
-#model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
+model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='C:\Users\bahar\Desktop\train 32\best.pt')  # local model
 time.sleep(5)
 print('Model has been downloaded and created')
@@ -252,7 +263,7 @@ while True:
                 #Use the created model to detect the object in the image, in this case a bottle
                 result = model(color_image)
                 objs = result.pandas().xyxy[0]
-                objs_name = objs.loc[objs['name'] == 'weed'] #weed #bottle
+                objs_name = objs.loc[objs['name'] == 'bottle'] #weed #bottle
                 
                 try:
                     #Calculate the middle point of the detected object, based on its bounding box dimensions
@@ -272,7 +283,7 @@ while True:
                     D = distance_to_camera(F, W_KNOWN_WIDTH, W_object_width)
                     
                     #Print known data for debugging
-                    print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Object Width:' + str(W_object_width) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta))    
+                    #print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Object Width:' + str(W_object_width) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta))    
                     
                     #Mark the middle of the camera view and the middle of the object, with a line connecting them, as well as object's bounding box
                     cv2.rectangle(color_image, (int(obj.xmin), int(obj.ymin)), (int(obj.xmax), int(obj.ymax)), (0,255,0),2)
@@ -284,19 +295,28 @@ while True:
                     #target_X = 0
                     error_X = TARGET_X - x_distance
                     integral_X += error_X * timeDelta
+                    integral_X = saturation(integral_X, 100)
                     derivative_X = (error_X - prevError_X) / timeDelta
                     prevError_X = error_X
                     PIDoutput_X = KP * error_X + KI * integral_X + KD * derivative_X
+                    PIDoutput_X = saturation(PIDoutput_X, 1)
                     
                     #PID Controller Y
                     #target_Y = 150
                     error_Y = TARGET_Y - y_distance
                     integral_Y += error_Y * timeDelta
+                    integral_Y = saturation(integral_Y, 100)
                     derivative_Y = (error_Y - prevError_Y) / timeDelta
                     prevError_Y = error_Y
                     PIDoutput_Y = KP * error_Y + KI * integral_Y + KD * derivative_Y
+                    PIDoutput_Y = saturation(PIDoutput_Y, 1)
                     
+                    #P Controller Z
+                    error_Z = D - TARGET_Z
+                    Poutput_Z = KP_Z * error_Z
+                    print('Distance:' + str(D) + '\t' + 'Speed: ' + str(Poutput_Z))
                     #Saturate the maximum output from the PID for both axis to 2m/s, as a sanity check
+                    '''
                     saturation = 2 
                     if(PIDoutput_X > saturation):
                         PIDoutput_X = saturation
@@ -305,20 +325,24 @@ while True:
                     if(PIDoutput_Y > saturation):
                         PIDoutput_Y = saturation
                     if(PIDoutput_Y < -saturation):
-                        PIDoutput_Y = -saturation
+                        PIDoutput_Y = -saturation'''
                     
                     #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
-                    if(D>12):
+                    if D<=11:
+                        closeToObject = True
+                        velocities = [0, 0, 0.05, 0 ,0 ,0]
+                        sendSpeed(base, velocities)
+                        time.sleep(1.1)
+                    elif(D>11):
                         closeToObject = False
                         if(abs(x_distance) > (TARGET_X + 5) or abs(y_distance) > (TARGET_Y + 5) or abs(y_distance) < (TARGET_Y - 5)):
                             velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
                             sendSpeed(base, velocities)
                         else:
-                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0.05, -PIDoutput_Y*2, PIDoutput_X*2, 0]
-                            sendSpeed(base, velocities)                       
-                    else:
-                        closeToObject = True
-                    
+                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, Poutput_Z, -PIDoutput_Y*2, PIDoutput_X*2, 0]
+                            sendSpeed(base, velocities)
+                        
+            
                     #If the distance to the object is less then 11cm, stop moving and close the gripper, grabbing the object
                     if closeToObject:
                         example = GripperCommandExample(router)
