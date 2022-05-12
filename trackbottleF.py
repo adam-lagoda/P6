@@ -6,12 +6,14 @@
 #   Intel L515
 ##############################################KP=0.005KI=0KD=0###
 #PID coefficients setup
-KP=0.025 #0.025 #0.05 oscillating #o.008 old
-KI=0.001
-KD=0.001
+KP=1 #0.025 #0.05 oscillating #o.008 old
+KI=0 #0.001
+KD=0 #0.001
 
 TARGET_X = 0
 TARGET_Y = 170 #100 plant 150 bottle
+
+THRESHOLD = 30
 
 TARGET_Z = 10
 KP_Z = 0.005
@@ -176,6 +178,13 @@ def saturation(variable, limit):
         variable = -limit
     return variable
 
+def feedbackPosition(base, base_cyclic):
+    feedback = base_cyclic.RefreshFeedback()
+    feedbackX.append(feedback.base.tool_pose_x)         # (meters)
+    feedbackY.append(feedback.base.tool_pose_y) 
+    feedbackZ.append(feedback.base.tool_pose_z)
+
+
 # Configure depth and color streams
 pipeline = rs.pipeline()
 config = rs.config()
@@ -200,6 +209,9 @@ prevError_Y=0
 timePlot = []
 dataX = []
 dataY = []
+feedbackX = []
+feedbackY = []
+feedbackZ = []
 
 #Setup the camera output parameters: 940x540 resolution, 8-bit brg color format, 30fps
 #config.enable_stream(rs.stream.color, 940, 540, rs.format.bgr8, 60)
@@ -242,6 +254,8 @@ while True:
                 timePlot.append(prevLoopTime)
                 secondsSinceStart = (perf_counter_ns() - startTime) / 1e9 #[sec]
                 
+                
+                
                 st = time.time()
                 
                 #Wait for the frames to arrive from the camera and save them
@@ -277,6 +291,7 @@ while True:
                     dataX.append(x_distance)
                     dataY.append(y_distance)
                     timePlot.append(prevLoopTime)
+                    feedbackPosition(base, base_cyclic)
                     #Calculate the distance to the object, based on its width and camera's focal length
                     F = focal_length(P_PIXEL_WIDTH, D_KNOWN_DISTANCE, W_KNOWN_WIDTH)
                     W_object_width = obj.xmax-obj.xmin
@@ -315,18 +330,9 @@ while True:
                     error_Z = D - TARGET_Z
                     Poutput_Z = KP_Z * error_Z
                     print('Distance:' + str(D) + '\t' + 'Speed: ' + str(Poutput_Z))
-                    #Saturate the maximum output from the PID for both axis to 2m/s, as a sanity check
-                    '''
-                    saturation = 2 
-                    if(PIDoutput_X > saturation):
-                        PIDoutput_X = saturation
-                    if(PIDoutput_X < -saturation):
-                        PIDoutput_X = -saturation
-                    if(PIDoutput_Y > saturation):
-                        PIDoutput_Y = saturation
-                    if(PIDoutput_Y < -saturation):
-                        PIDoutput_Y = -saturation'''
                     
+                    
+                    #Saturate the maximum output from the PID for both axis to 2m/s, as a sanity check
                     #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
                     if D<=11:
                         closeToObject = True
@@ -335,7 +341,7 @@ while True:
                         time.sleep(1.1)
                     elif(D>11):
                         closeToObject = False
-                        if(abs(x_distance) > (TARGET_X + 5) or abs(y_distance) > (TARGET_Y + 5) or abs(y_distance) < (TARGET_Y - 5)):
+                        if(abs(x_distance) > (TARGET_X + THRESHOLD) or abs(y_distance) > (TARGET_Y + THRESHOLD) or abs(y_distance) < (TARGET_Y - THRESHOLD)):
                             velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
                             sendSpeed(base, velocities)
                         else:
@@ -380,6 +386,6 @@ while True:
         finally:
             #Stop streaming the camera preview
             #plt.plot(timePlot, dataX)
-            data = pd.DataFrame({tuple(timePlot), tuple(dataX), tuple(dataY)})
+            data = pd.DataFrame({tuple(timePlot), tuple(dataX), tuple(dataY), tuple(feedbackX), tuple(feedbackY), tuple(feedbackZ)})
             data.to_excel('sample_data.xlsx', sheet_name='sheet1', index=False)
             pipeline.stop()
