@@ -17,7 +17,8 @@ config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 profile = pipeline.start(config)
 
 #model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
+#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best1.pt')
 
 time.sleep(5)
 print('model created')
