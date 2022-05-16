@@ -1,19 +1,27 @@
 #################################################
 # Visual Servoing Robotic Arm
-# Created by: AL, TAP, SFMS
+# Created by: AL, TAP, SFMS // AIE6
 # Hardware:
 #   Kinova Kortex Lite Gen 3
 #   Intel L515
-#################################################
+##############################################KP=0.005KI=0KD=0###
 #PID coefficients setup
-KP=0.1
-KI=100
-KD=50
+KP=1 #0.025 #0.05 oscillating #o.008 old
+KI=0 #0.001
+KD=0 #0.001
+
+TARGET_X = 0
+TARGET_Y = 170 #100 plant 150 bottle
+
+THRESHOLD = 30
+
+TARGET_Z = 10
+KP_Z = 0.005
 #################################################
 #Camera lens parameters setup
-P_PIXEL_WIDTH = 43      #Pixel of object with distance D_initial #43 for fisheye #94 without
-D_KNOWN_DISTANCE = 52   #Measured distance from camera to object in cm #52 for fishye #40 without
-W_KNOWN_WIDTH = 5.7     #Known width of object in cm
+P_PIXEL_WIDTH = 43      #Pixel of object with distance D_initial #43 for fisheye #94 without #plant 157
+D_KNOWN_DISTANCE = 52   #Measured distance from camera to object in cm #52 for fishye #40 without #plant 46
+W_KNOWN_WIDTH = 5.7     #Known width of object in cm 5.7 #plant 6
 #################################################
 #Constants definitions
 TIMEOUT_DURATION = 20
@@ -22,12 +30,15 @@ TIMEOUT_DURATION = 20
 import os
 import sys
 import time
+from turtle import delay
 import numpy as np
 import cv2
 import torch
 import threading
 import pyrealsense2 as rs
-import utilities #2nd script, holds neccessary functions
+import matplotlib.pyplot as plt
+import pandas as pd
+#import utilities #2nd script, holds neccessary functions
 from charset_normalizer import detect
 from time import sleep, perf_counter_ns
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
@@ -38,7 +49,7 @@ from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
 def focal_length(pixelWidth, knownDistance, knownWidth):
     focalLength = (pixelWidth * knownDistance) / knownWidth
     return focalLength
-
+#################################################
 def distance_to_camera (focalLength, knownWidth, pixelWidth):
     distance = (knownWidth * focalLength) / pixelWidth
     return distance
@@ -160,13 +171,27 @@ def home_position(base):
         print("Timeout on action notification wait")
     return finished
 
+def saturation(variable, limit):
+    if(variable > limit):
+        variable = limit
+    if(variable < -limit):
+        variable = -limit
+    return variable
+
+def feedbackPosition(base, base_cyclic):
+    feedback = base_cyclic.RefreshFeedback()
+    feedbackX.append(feedback.base.tool_pose_x)         # (meters)
+    feedbackY.append(feedback.base.tool_pose_y) 
+    feedbackZ.append(feedback.base.tool_pose_z)
+
+
 # Configure depth and color streams
 pipeline = rs.pipeline()
 config = rs.config()
 
 #Define initial valaues for the variables
 follow = False
-moveTowards = False
+grip = False
 closeToObject = False
 gripperClosed = False
 runOnce = False
@@ -181,10 +206,22 @@ PIDoutput_X=0
 prevError_X=0
 prevError_Y=0
 
+<<<<<<< HEAD
 #Setup the camera output parameters: 940x540 resolution, 8-bit brg color format, 30fps
 config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 #config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+=======
+timePlot = []
+dataX = []
+dataY = []
+feedbackX = []
+feedbackY = []
+feedbackZ = []
+>>>>>>> efb12ad54cb26747e5a39846cc889aaef50bcab7
 
+#Setup the camera output parameters: 940x540 resolution, 8-bit brg color format, 30fps
+#config.enable_stream(rs.stream.color, 940, 540, rs.format.bgr8, 60)
+config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
 #Start streaming the camera preview
 profile = pipeline.start(config)
 
@@ -196,6 +233,8 @@ model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
 time.sleep(5)
 print('Model has been downloaded and created')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+import utilities
 
 args = utilities.parseConnectionArguments()
 #Start the main loop
@@ -210,16 +249,21 @@ while True:
         home_position(base)
         #Initialize the gripper and make sure it is open
         example = GripperCommandExample(router)
+        print("before gripper open")
         example.open_gripper()
+        print("after gripper open")
         time.sleep(5)
         try:
             while True:
                 #Capture timestamps, used for performance measurement and PID calculation
                 timeDelta = (perf_counter_ns() - prevLoopTime) / 1e9  #[sec]
                 prevLoopTime = perf_counter_ns() #[nanosec]
+                timePlot.append(prevLoopTime)
                 secondsSinceStart = (perf_counter_ns() - startTime) / 1e9 #[sec]
                 
-                #st = time.time()
+                
+                
+                st = time.time()
                 
                 #Wait for the frames to arrive from the camera and save them
                 if runOnce == False:
@@ -244,7 +288,11 @@ while True:
                 #Use the created model to detect the object in the image, in this case a bottle
                 result = model(color_image)
                 objs = result.pandas().xyxy[0]
+<<<<<<< HEAD
                 objs_name = objs.loc[objs['name'] == 'bottle'] #bottle #weed
+=======
+                objs_name = objs.loc[objs['name'] == 'bottle'] #weed #bottle
+>>>>>>> efb12ad54cb26747e5a39846cc889aaef50bcab7
                 
                 try:
                     #Calculate the middle point of the detected object, based on its bounding box dimensions
@@ -255,14 +303,17 @@ while True:
                     #Calculate the distance from the middle of the camera frame view, to the middle of the object
                     x_distance = x_middle-width/2
                     y_distance = y_middle-height/2
-                    
+                    dataX.append(x_distance)
+                    dataY.append(y_distance)
+                    timePlot.append(prevLoopTime)
+                    feedbackPosition(base, base_cyclic)
                     #Calculate the distance to the object, based on its width and camera's focal length
                     F = focal_length(P_PIXEL_WIDTH, D_KNOWN_DISTANCE, W_KNOWN_WIDTH)
                     W_object_width = obj.xmax-obj.xmin
                     D = distance_to_camera(F, W_KNOWN_WIDTH, W_object_width)
                     
                     #Print known data for debugging
-                    print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Object Width:' + str(W_object_width) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta))    
+                    #print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Object Width:' + str(W_object_width) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta))    
                     
                     #Mark the middle of the camera view and the middle of the object, with a line connecting them, as well as object's bounding box
                     cv2.rectangle(color_image, (int(obj.xmin), int(obj.ymin)), (int(obj.xmax), int(obj.ymax)), (0,255,0),2)
@@ -271,44 +322,48 @@ while True:
                     cv2.line(color_image, (int(x_middle), int(y_middle)), (int(width/2), int(height/2)), (0,0,255), 2)
 
                     #PID Controller X
-                    target_X = 0
-                    error_X = target_X - x_distance
+                    #target_X = 0
+                    error_X = TARGET_X - x_distance
                     integral_X += error_X * timeDelta
+                    integral_X = saturation(integral_X, 100)
                     derivative_X = (error_X - prevError_X) / timeDelta
                     prevError_X = error_X
                     PIDoutput_X = KP * error_X + KI * integral_X + KD * derivative_X
+                    PIDoutput_X = saturation(PIDoutput_X, 1)
                     
                     #PID Controller Y
-                    target_Y = 150
-                    error_Y = target_Y - y_distance
+                    #target_Y = 150
+                    error_Y = TARGET_Y - y_distance
                     integral_Y += error_Y * timeDelta
+                    integral_Y = saturation(integral_Y, 100)
                     derivative_Y = (error_Y - prevError_Y) / timeDelta
                     prevError_Y = error_Y
                     PIDoutput_Y = KP * error_Y + KI * integral_Y + KD * derivative_Y
+                    PIDoutput_Y = saturation(PIDoutput_Y, 1)
+                    
+                    #P Controller Z
+                    error_Z = D - TARGET_Z
+                    Poutput_Z = KP_Z * error_Z
+                    print('Distance:' + str(D) + '\t' + 'Speed: ' + str(Poutput_Z))
+                    
                     
                     #Saturate the maximum output from the PID for both axis to 2m/s, as a sanity check
-                    deadband = 2 
-                    if(PIDoutput_X > deadband):
-                        PIDoutput_X = deadband
-                    if(PIDoutput_X < -deadband):
-                        PIDoutput_X = -deadband
-                    if(PIDoutput_Y > deadband):
-                        PIDoutput_Y = deadband
-                    if(PIDoutput_Y < -deadband):
-                        PIDoutput_Y = -deadband
-                    
                     #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
-                    if(D > 11):
+                    if D<=11:
+                        closeToObject = True
+                        velocities = [0, 0, 0.05, 0 ,0 ,0]
+                        sendSpeed(base, velocities)
+                        time.sleep(1.1)
+                    elif(D>11):
                         closeToObject = False
-                        if(abs(x_distance) > (target_X + 5) or abs(y_distance) > (target_Y + 15) or abs(y_distance) < (target_Y - 15)):
+                        if(abs(x_distance) > (TARGET_X + THRESHOLD) or abs(y_distance) > (TARGET_Y + THRESHOLD) or abs(y_distance) < (TARGET_Y - THRESHOLD)):
                             velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
                             sendSpeed(base, velocities)
                         else:
-                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0.01, -PIDoutput_Y*2, PIDoutput_X*2, 0]
-                            sendSpeed(base, velocities)                       
-                    else:
-                        closeToObject = True
-                    
+                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, Poutput_Z, -PIDoutput_Y*2, PIDoutput_X*2, 0]
+                            sendSpeed(base, velocities)
+                        
+            
                     #If the distance to the object is less then 11cm, stop moving and close the gripper, grabbing the object
                     if closeToObject:
                         example = GripperCommandExample(router)
@@ -333,11 +388,11 @@ while True:
                 if key & 0xFF == ord('q') or key == 27:
                     cv2.destroyAllWindows()
                     break
-                if key & 0xFF == ord('m'): #or key == 27:
-                    if(moveTowards ==True):
-                        moveTowards = False
+                if key & 0xFF == ord('g'): #or key == 27:
+                    if(grip ==True):
+                        grip = False
                     else:
-                        moveTowards = True
+                        grip = True
                 if key & 0xFF == ord('f'): #or key == 27:
                     if(follow ==True):
                         follow = False
@@ -345,4 +400,7 @@ while True:
                         follow = True        
         finally:
             #Stop streaming the camera preview
+            #plt.plot(timePlot, dataX)
+            data = pd.DataFrame({tuple(timePlot), tuple(dataX), tuple(dataY), tuple(feedbackX), tuple(feedbackY), tuple(feedbackZ)})
+            data.to_excel('sample_data.xlsx', sheet_name='sheet1', index=False)
             pipeline.stop()
