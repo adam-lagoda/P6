@@ -183,14 +183,16 @@ prevError_Y=0
 
 #Setup the camera output parameters: 940x540 resolution, 8-bit brg color format, 30fps
 config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
+#config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
 
 #Start streaming the camera preview
 profile = pipeline.start(config)
 
 #Load the YOLO object detection model
-#model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
+model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='C:\Users\bahar\Desktop\train 32\best.pt')  # local model
+#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best1.pt')
 time.sleep(5)
 print('Model has been downloaded and created')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -220,6 +222,10 @@ while True:
                 #st = time.time()
                 
                 #Wait for the frames to arrive from the camera and save them
+                if runOnce == False:
+                    time.sleep(5)
+                    runOnce = True
+
                 frames = pipeline.wait_for_frames()
                 color_frame = frames.get_color_frame()
                 
@@ -238,7 +244,7 @@ while True:
                 #Use the created model to detect the object in the image, in this case a bottle
                 result = model(color_image)
                 objs = result.pandas().xyxy[0]
-                objs_name = objs.loc[objs['name'] == 'weed'] #bottle
+                objs_name = objs.loc[objs['name'] == 'bottle'] #bottle #weed
                 
                 try:
                     #Calculate the middle point of the detected object, based on its bounding box dimensions
