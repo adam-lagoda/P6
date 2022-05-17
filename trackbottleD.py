@@ -34,6 +34,7 @@ from turtle import delay
 import numpy as np
 import cv2
 import torch
+import math
 import threading
 import pyrealsense2 as rs
 import matplotlib.pyplot as plt
@@ -213,11 +214,13 @@ feedbackX = []
 feedbackY = []
 feedbackZ = []
 
-#Setup the camera output parameters: 940x540 resolution, 8-bit brg color format, 30fps
-config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
-#config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+#Setup the camera output parameters
+config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 60)    
+config.enable_stream(rs.stream.depth, 1024, 768, rs.format.z16, 30)
 #Start streaming the camera preview
 profile = pipeline.start(config)
+align_to = rs.stream.depth
+align = rs.align(align_to)
 
 #Load the YOLO object detection model
 #model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
@@ -254,9 +257,6 @@ while True:
                 prevLoopTime = perf_counter_ns() #[nanosec]
                 timePlot.append(prevLoopTime)
                 secondsSinceStart = (perf_counter_ns() - startTime) / 1e9 #[sec]
-                
-                
-                
                 st = time.time()
                 
                 #Wait for the frames to arrive from the camera and save them
@@ -265,15 +265,19 @@ while True:
                     runOnce = True
 
                 frames = pipeline.wait_for_frames()
-                color_frame = frames.get_color_frame()
-                
-                if not color_frame:
-                    continue
+                #Aligning color frame to depth frame
+                aligned_frames =  align.process(frames)
+                depth_frame = aligned_frames.get_depth_frame()
+                aligned_color_frame = aligned_frames.get_color_frame()
+                #color_frame = frames.get_color_frame()
+
+                if not depth_frame or not aligned_color_frame: continue  
                 
                 #Convert image to numpy arrays
-                color_image = np.asanyarray(color_frame.get_data())
-                color_colormap_dim = color_image.shape
-                color_dim = color_image.shape
+                color_intrin = aligned_color_frame.profile.as_video_stream_profile().intrinsics
+                depth_image = np.asanyarray(depth_frame.get_data())
+                color_image = np.asanyarray(aligned_color_frame.get_data())
+        
                 
                 #Camera image dimensions
                 height = color_image.shape[0]
@@ -297,13 +301,18 @@ while True:
                     dataY.append(y_distance)
                     timePlot.append(prevLoopTime)
                     feedbackPosition(base, base_cyclic)
-                    #Calculate the distance to the object, based on its width and camera's focal length
-                    F = focal_length(P_PIXEL_WIDTH, D_KNOWN_DISTANCE, W_KNOWN_WIDTH)
-                    W_object_width = obj.xmax-obj.xmin
-                    D = distance_to_camera(F, W_KNOWN_WIDTH, W_object_width)
+                    
+                    #Scale the center point of the detected object to match the aligned depth frame
+                    x_depth = round( x_middle*768/width,0)
+                    y_depth = round( y_middle*1024/height,0)
+                    
+                    #Calculate the distance to the center of the object based on the depth camera
+                    depth = depth_frame.get_distance(x_depth, y_depth)
+                    dx ,dy, dz = rs.rs2_deproject_pixel_to_point(color_intrin, [x_depth,y_depth], depth)
+                    D = 100*math.sqrt(((dx)**2) + ((dy)**2) + ((dz)**2))
                     
                     #Print known data for debugging
-                    print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Object Width:' + str(W_object_width) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta))    
+                    print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta))    
                     
                     #Mark the middle of the camera view and the middle of the object, with a line connecting them, as well as object's bounding box
                     cv2.rectangle(color_image, (int(obj.xmin), int(obj.ymin)), (int(obj.xmax), int(obj.ymax)), (0,255,0),2)
@@ -340,12 +349,12 @@ while True:
                     
                     #Saturate the maximum output from the PID for both axis to 2m/s, as a sanity check
                     #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
-                    if D<=11:
+                    if D<=25:
                         closeToObject = True
                         velocities = [0, 0, 0.05, 0 ,0 ,0]
                         sendSpeed(base, velocities)
-                        time.sleep(1.1)
-                    elif(D>11):
+                        time.sleep(5)
+                    elif(D>25):
                         closeToObject = False
                         if(abs(x_distance) > (TARGET_X + THRESHOLD) or abs(y_distance) > (TARGET_Y + THRESHOLD) or abs(y_distance) < (TARGET_Y - THRESHOLD)):
                             velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]

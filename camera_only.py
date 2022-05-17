@@ -60,12 +60,13 @@ try:
                 middle_x = (obj.xmax-obj.xmin)/2 + obj.xmin
                 middle_y = (obj.ymax-obj.ymin)/2 + obj.ymin
                 xdist = middle_x-width/2
+                W_object_width = obj.xmax-obj.xmin
                 ydist = middle_y-height/2
                 #print('xdist: ' + str(round(xdist,2)) + '\t' + 'ydist: ' + str(round(ydist,2)))
             #    anglex, angley = get_angles(int(middle_x), int(middle_y), width, height)
             #    dist = round(depth_image[int(middle_y)][int(middle_x)] * depth_scale,2)
             #    x,y,z = get_cart(anglex, angley, dist)
-                print('xdist: ' + str(round(xdist,2)) + '\t' + 'ydist: ' + str(round(ydist,2)))    
+                print('xdist: ' + str(round(xdist,2)) + '\t' + 'ydist: ' + str(round(ydist,2)) + '\t' ++ 'width[px]: ' + str(round(W_object_width,2)))    
                 
                 cv2.rectangle(color_image, (int(obj.xmin), int(obj.ymin)), (int(obj.xmax), int(obj.ymax)), (0,255,0),2)
                 cv2.circle(color_image, (int(middle_x), int(middle_y)), 5, (0, 255, 0), 2)
