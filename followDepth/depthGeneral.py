@@ -8,11 +8,11 @@ import time
 import torch
 from realsense_depth import *
 
-point = (400, 300)
+#point = (400, 300)
 
-def show_distance(event, x, y, args, params):
-    global point
-    point = (x, y)
+#def show_distance(event, x, y, args, params):
+#    global point
+#    point = (x, y)
 
 # Initialize Camera Intel Realsense
 dc = DepthCamera()
@@ -51,7 +51,7 @@ while True:
         cv2.circle(color_frame, (int(width/2), int(height/2)), 5, (0, 0, 255), 2)
         cv2.line(color_frame, (int(x_middle), int(y_middle)), (int(width/2), int(height/2)), (0,0,255), 2)
 
-        distance = depth_frame[int(y_middle), int(x_middle)]
+        distance = depth_frame[int(y_middle), int(x_middle)]/10 
         print("Distance: ", distance)
     except:
         print("Object not detected")

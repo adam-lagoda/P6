@@ -30,7 +30,6 @@ TIMEOUT_DURATION = 20
 import os
 import sys
 import time
-from turtle import delay
 import numpy as np
 import cv2
 import torch
@@ -40,7 +39,7 @@ import pyrealsense2 as rs
 import matplotlib.pyplot as plt
 import pandas as pd
 #import utilities #2nd script, holds neccessary functions
-from charset_normalizer import detect
+from realsense_depth import *
 from time import sleep, perf_counter_ns
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
@@ -214,20 +213,14 @@ feedbackX = []
 feedbackY = []
 feedbackZ = []
 
-#Setup the camera output parameters
-config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 60)    
-config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
-#Start streaming the camera preview
-profile = pipeline.start(config)
-align_to = rs.stream.depth
-align = rs.align(align_to)
-
+dc = DepthCamera()
 #Load the YOLO object detection model
 model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best1.pt')
-time.sleep(5)
+
 print('Model has been downloaded and created')
+time.sleep(5)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import utilities
@@ -262,40 +255,27 @@ while True:
                 if runOnce == False:
                     time.sleep(5)
                     runOnce = True
+                    
+                
+                ret, depth_frame, color_frame = dc.get_frame()
 
-                frames = pipeline.wait_for_frames()
-                #Aligning color frame to depth frame
-                color_frame = frames.get_color_frame()
-                depth_frame = frames.get_depth_frame()
-                #aligned_frames =  align.process(frames)
-                #depth_frame = aligned_frames.get_depth_frame()
-                #aligned_color_frame = aligned_frames.get_color_frame()
-                
-                #if not depth_frame or not aligned_color_frame: continue  
-                if not depth_frame or not color_frame: 
-                    continue  
-                #Convert image to numpy arrays
-                #color_intrin = aligned_color_frame.profile.as_video_stream_profile().intrinsics
-                depth_image = np.asanyarray(depth_frame.get_data())
-                #color_image = np.asanyarray(aligned_color_frame.get_data())
-                color_recognition = np.asanyarray(color_frame.get_data())
-        
-                
-                #Camera image dimensions
-                height = color_recognition.shape[0]
-                width = color_recognition.shape[1]
-                
-                #Use the created model to detect the object in the image, in this case a bottle
-                result = model(color_recognition)
+                result = model(color_frame)
                 objs = result.pandas().xyxy[0]
-                objs_name = objs.loc[objs['name'] == 'bottle'] #bottle #weed
+                objs_name = objs.loc[objs['name'] == 'bottle']
                 
+                height = color_frame.shape[0]
+                width = color_frame.shape[1]
+                
+                x_middle = 0
+                y_middle = 0
                 try:
                     #Calculate the middle point of the detected object, based on its bounding box dimensions
                     obj = objs_name.iloc[0]
                     x_middle = obj.xmin + (obj.xmax-obj.xmin)/2
                     y_middle = obj.ymin + (obj.ymax-obj.ymin)/2
                     
+                    x_middle = round(x_middle, 0)
+                    y_middle = round(y_middle, 0)
                     #Calculate the distance from the middle of the camera frame view, to the middle of the object
                     x_distance = x_middle-width/2
                     y_distance = y_middle-height/2
@@ -304,25 +284,19 @@ while True:
                     timePlot.append(prevLoopTime)
                     feedbackPosition(base, base_cyclic)
                     
-                    #Scale the center point of the detected object to match the aligned depth frame
-                    x_depth = round(x_middle*540/width,0)
-                    y_depth = round( y_middle*960/height,0)
+                    
                     
                     #Calculate the distance to the center of the object based on the depth camera
-                    depth = depth_frame.get_distance(x_depth, y_depth)
-                    D = 100#*depth_frame[y_depth,x_depth]
-                    #depth_frame.get_distance(x_depth, y_depth)
-                    #dx ,dy, dz = rs.rs2_deproject_pixel_to_point(color_intrin, [x_depth,y_depth], depth)
-                    #D = 100*math.sqrt(((dx)**2) + ((dy)**2) + ((dz)**2))
+                    D = depth_frame[int(y_middle), int(x_middle)]/10 
                     
                     #Print known data for debugging
                     print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta))    
                     
                     #Mark the middle of the camera view and the middle of the object, with a line connecting them, as well as object's bounding box
-                    cv2.rectangle(color_recognition, (int(obj.xmin), int(obj.ymin)), (int(obj.xmax), int(obj.ymax)), (0,255,0),2)
-                    cv2.circle(color_recognition, (int(x_middle), int(y_middle)), 5, (0, 255, 0), 2)
-                    cv2.circle(color_recognition, (int(width/2), int(height/2)), 5, (0, 0, 255), 2)
-                    cv2.line(color_recognition, (int(x_middle), int(y_middle)), (int(width/2), int(height/2)), (0,0,255), 2)
+                    cv2.rectangle(color_frame, (int(obj.xmin), int(obj.ymin)), (int(obj.xmax), int(obj.ymax)), (0,255,0),2)
+                    cv2.circle(color_frame, (int(x_middle), int(y_middle)), 5, (0, 255, 0), 2)
+                    cv2.circle(color_frame, (int(width/2), int(height/2)), 5, (0, 0, 255), 2)
+                    cv2.line(color_frame, (int(x_middle), int(y_middle)), (int(width/2), int(height/2)), (0,0,255), 2)
 
                     #PID Controller X
                     #target_X = 0
@@ -386,7 +360,8 @@ while True:
 
                 #Display a window with a camera preview
                 cv2.namedWindow('Camera Preview', cv2.WINDOW_AUTOSIZE)
-                cv2.imshow('Camera Preview', color_recognition)
+                cv2.imshow('Camera Preview', color_frame)
+                cv2.imshow("depth frame", depth_frame)
                 key = cv2.waitKey(1)
 
                 if key & 0xFF == ord('q') or key == 27:
