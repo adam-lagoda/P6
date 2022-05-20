@@ -1,19 +1,34 @@
 #################################################
 # Visual Servoing Robotic Arm
-# Created by: AL, TAP, SFMS // AIE6
+# Created by: AL, TAP, SFMS // AIE6-3
+# Bachelor Thesis
+# Aalborg Univeristy Esbjerg 2022
 # Hardware:
 #   Kinova Kortex Lite Gen 3
 #   Intel L515
 ##############################################KP=0.005KI=0KD=0###
+# Change the object here \/
+SELECTED_OBJECT = 'bottle' #bottle or weed
+##############################################
+if SELECTED_OBJECT == 'bottle':
+    TARGET_X = 0
+    TARGET_Y = 170 #110 plant 170 bottle
+    DISTANCE_HARDCODED_TIME = 3.75 #3.75 dor bottle 3 for plant
+
+else:
+    TARGET_X = 0
+    TARGET_Y = 20 #110 plant 170 bottle
+    DISTANCE_HARDCODED_TIME = 3.75 #3.75 dor bottle 3 for plant
+##############################################
 #PID coefficients setup
 KP=0.025 #0.025 #0.05 oscillating #o.008 old
 KI=0 #0.001
 KD=0 #0.001
 
-TARGET_X = 0
-TARGET_Y = 100 #100 plant 170 bottle
 
-THRESHOLD = 30
+THRESHOLD_CENTERING = 35 #25
+
+DISTANCE_HARDCODED_THRESHOLD = 27
 
 TARGET_Z = 10
 KP_Z = 0.005
@@ -101,7 +116,7 @@ class GripperCommandExample:
         finger = gripper_command.gripper.finger.add()
 
         gripper_command.mode = Base_pb2.GRIPPER_SPEED
-        finger.value = 0.1
+        finger.value = 0.2
         self.base.SendGripperCommand(gripper_command)
         gripper_request = Base_pb2.GripperRequest()    
 
@@ -122,7 +137,7 @@ class GripperCommandExample:
         finger = gripper_command.gripper.finger.add()            
 
         gripper_command.mode = Base_pb2.GRIPPER_SPEED
-        finger.value = -0.1
+        finger.value = -0.2
         self.base.SendGripperCommand(gripper_command)
         gripper_request = Base_pb2.GripperRequest()    
         # Wait for reported speed to be 0
@@ -131,7 +146,8 @@ class GripperCommandExample:
             gripper_measure = self.base.GetMeasuredGripperMovement(gripper_request)
             if len (gripper_measure.finger):
                 print("Current speed is : {0}".format(gripper_measure.finger[0].value))
-                if gripper_measure.finger[0].value == 0.0:
+                if gripper_measure.finger[0].value == 0.00:
+                    print("Gripper closed")
                     break
             else: # Else, no finger present in answer, end loop
                 break
@@ -184,10 +200,9 @@ def feedbackPosition(base, base_cyclic):
     feedbackY.append(feedback.base.tool_pose_y) 
     feedbackZ.append(feedback.base.tool_pose_z)
 
-
-# Configure depth and color streams
-pipeline = rs.pipeline()
-config = rs.config()
+def show_distance(event, x, y, args, params):
+    global point
+    point = (x, y)
 
 #Define initial valaues for the variables
 follow = False
@@ -195,6 +210,7 @@ grip = False
 closeToObject = False
 gripperClosed = False
 runOnce = False
+centered = False
 startTime = perf_counter_ns()
 prevLoopTime = perf_counter_ns()
 integral_X=0
@@ -213,10 +229,14 @@ feedbackX = []
 feedbackY = []
 feedbackZ = []
 
+point = (400, 300)
+    
 dc = DepthCamera()
 #Load the YOLO object detection model
-model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
-#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
+if SELECTED_OBJECT == 'bottle':
+    model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+else:
+    model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/old-best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best1.pt')
 
 print('Model has been downloaded and created')
@@ -257,11 +277,11 @@ while True:
                     runOnce = True
                     
                 
-                ret, depth_frame, color_frame = dc.get_frame()
+                ret, depth_frame, color_frame, depth_image = dc.get_frame()
 
                 result = model(color_frame)
                 objs = result.pandas().xyxy[0]
-                objs_name = objs.loc[objs['name'] == 'bottle']
+                objs_name = objs.loc[objs['name'] == SELECTED_OBJECT]
                 
                 height = color_frame.shape[0]
                 width = color_frame.shape[1]
@@ -284,20 +304,18 @@ while True:
                     timePlot.append(prevLoopTime)
                     feedbackPosition(base, base_cyclic)
                     
-                    
-                    
-                    #Calculate the distance to the center of the object based on the depth camera
-                    D = depth_frame[int(y_middle), int(x_middle)]/10 
-                    
-                    #Print known data for debugging
-                    print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta))    
-                    
                     #Mark the middle of the camera view and the middle of the object, with a line connecting them, as well as object's bounding box
                     cv2.rectangle(color_frame, (int(obj.xmin), int(obj.ymin)), (int(obj.xmax), int(obj.ymax)), (0,255,0),2)
                     cv2.circle(color_frame, (int(x_middle), int(y_middle)), 5, (0, 255, 0), 2)
                     cv2.circle(color_frame, (int(width/2), int(height/2)), 5, (0, 0, 255), 2)
                     cv2.line(color_frame, (int(x_middle), int(y_middle)), (int(width/2), int(height/2)), (0,0,255), 2)
+                    
+                    #Calculate the distance to the center of the object based on the depth camera
+                    ret, depth_aligned_frame, color_aligned_frame, distance_frame_depth = dc.get_aligned_frame()
 
+                    D = distance_frame_depth.get_distance(int(x_middle), int(y_middle))
+                    D = round(D*100, 2)
+                                   
                     #PID Controller X
                     #target_X = 0
                     error_X = TARGET_X - x_distance
@@ -322,22 +340,26 @@ while True:
                     error_Z = D - TARGET_Z
                     Poutput_Z = KP_Z * error_Z
                     Poutput_Z = saturation(Poutput_Z, 0.05)
-                    print('Distance:' + str(D) + '\t' + 'Speed: ' + str(Poutput_Z))
                     
+                    #Print data for debugging
+                    print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta) + '\t' + 'Speed: ' + str(Poutput_Z))    
+                         
                     
                     #Saturate the maximum output from the PID for both axis to 2m/s, as a sanity check
                     #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
-                    if D<=25:
+                    if D<=DISTANCE_HARDCODED_THRESHOLD and centered:
                         closeToObject = True
                         velocities = [0, 0, 0.05, 0 ,0 ,0]
                         sendSpeed(base, velocities)
-                        time.sleep(5)
-                    elif(D>25):
+                        time.sleep(DISTANCE_HARDCODED_TIME)
+                    elif(D>DISTANCE_HARDCODED_THRESHOLD) or not centered:
                         closeToObject = False
-                        if(abs(x_distance) > (TARGET_X + THRESHOLD) or abs(y_distance) > (TARGET_Y + THRESHOLD) or abs(y_distance) < (TARGET_Y - THRESHOLD)):
+                        if(abs(x_distance) > abs(TARGET_X + THRESHOLD_CENTERING) or abs(y_distance) > abs(TARGET_Y + THRESHOLD_CENTERING) or abs(y_distance) < abs(TARGET_Y - THRESHOLD_CENTERING)):
+                            centered = False
                             velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
                             sendSpeed(base, velocities)
                         else:
+                            centered = True
                             velocities = [PIDoutput_X/50, PIDoutput_Y/50, Poutput_Z, -PIDoutput_Y*2, PIDoutput_X*2, 0]
                             sendSpeed(base, velocities)
                         
@@ -361,7 +383,7 @@ while True:
                 #Display a window with a camera preview
                 cv2.namedWindow('Camera Preview', cv2.WINDOW_AUTOSIZE)
                 cv2.imshow('Camera Preview', color_frame)
-                cv2.imshow("depth frame", depth_frame)
+                #cv2.imshow("depth frame", depth_frame)
                 key = cv2.waitKey(1)
 
                 if key & 0xFF == ord('q') or key == 27:
@@ -382,4 +404,4 @@ while True:
             #plt.plot(timePlot, dataX)
             data = pd.DataFrame({tuple(timePlot), tuple(dataX), tuple(dataY), tuple(feedbackX), tuple(feedbackY), tuple(feedbackZ)})
             data.to_excel('sample_data.xlsx', sheet_name='sheet1', index=False)
-            pipeline.stop()
+            dc.release()

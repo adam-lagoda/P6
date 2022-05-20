@@ -17,8 +17,8 @@ def show_distance(event, x, y, args, params):
 # Initialize Camera Intel Realsense
 dc = DepthCamera()
 
-#model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')
+model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')
 time.sleep(5)  
 print('Model has been downloaded and created') 
 
@@ -31,7 +31,7 @@ while True:
 
     result = model(color_frame)
     objs = result.pandas().xyxy[0]
-    objs_name = objs.loc[objs['name'] == 'weed']
+    objs_name = objs.loc[objs['name'] == 'bottle']
     
     height = color_frame.shape[0]
     width = color_frame.shape[1]
