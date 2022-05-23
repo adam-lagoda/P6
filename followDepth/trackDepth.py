@@ -6,37 +6,33 @@
 # Hardware:
 #   Kinova Kortex Lite Gen 3
 #   Intel L515
-##############################################KP=0.005KI=0KD=0###
-# Change the object here \/
+#################################################
+# Target object Selection
 SELECTED_OBJECT = 'bottle' #bottle or weed
-##############################################
+
 if SELECTED_OBJECT == 'bottle':
     TARGET_X = 0
     TARGET_Y = 170 #110 plant 170 bottle
     DISTANCE_HARDCODED_TIME = 3.75 #3.75 dor bottle 3 for plant
-
 else:
     TARGET_X = 0
     TARGET_Y = 20 #110 plant 170 bottle
     DISTANCE_HARDCODED_TIME = 3.75 #3.75 dor bottle 3 for plant
-##############################################
+#################################################
 #PID coefficients setup
 KP=0.025 #0.025 #0.05 oscillating #o.008 old
-KI=0 #0.001
-KD=0 #0.001
+KI=0.001 #0.001
+KD=0.001 #0.001
 
-
+#Allowed boundaries when the object is considered "centered"
 THRESHOLD_CENTERING = 35 #25
 
+#Distance after which the robot will move the remaining distance to the object without detection or centering
 DISTANCE_HARDCODED_THRESHOLD = 27
 
+#Target distance of the P-controller for the Z-axis movement
 TARGET_Z = 10
 KP_Z = 0.005
-#################################################
-#Camera lens parameters setup
-P_PIXEL_WIDTH = 162      #Pixel of object with distance D_initial #43 for fisheye #94 without #plant 157
-D_KNOWN_DISTANCE = 56   #Measured distance from camera to object in cm #52 for fishye #40 without #plant 46
-W_KNOWN_WIDTH = 17.5     #Known width of object in cm 5.7 #plant 6
 #################################################
 #Constants definitions
 TIMEOUT_DURATION = 20
@@ -53,22 +49,14 @@ import threading
 import pyrealsense2 as rs
 import matplotlib.pyplot as plt
 import pandas as pd
-#import utilities #2nd script, holds neccessary functions
+import utilities
 from realsense_depth import *
 from time import sleep, perf_counter_ns
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
 from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
 #################################################
-#Functions used for distance calculation based on the focal length and fixed, known object size
-def focal_length(pixelWidth, knownDistance, knownWidth):
-    focalLength = (pixelWidth * knownDistance) / knownWidth
-    return focalLength
-#################################################
-def distance_to_camera (focalLength, knownWidth, pixelWidth):
-    distance = (knownWidth * focalLength) / pixelWidth
-    return distance
-
+#Functions
 def check_for_end_or_abort(e):
     """Return a closure checking for END or ABORT notifications
 
@@ -97,7 +85,7 @@ def sendSpeed(base, velocities):
     twist.angular_x = velocities[3]
     twist.angular_y = velocities[4]
     twist.angular_z = velocities[5]
-
+    #Sedn values to the base
     base.SendTwistCommand(command)
 
 class GripperCommandExample:
@@ -114,7 +102,8 @@ class GripperCommandExample:
         # Create the GripperCommand we will send
         gripper_command = Base_pb2.GripperCommand()
         finger = gripper_command.gripper.finger.add()
-
+        
+        #Change the gripper movement velocity value
         gripper_command.mode = Base_pb2.GRIPPER_SPEED
         finger.value = 0.2
         self.base.SendGripperCommand(gripper_command)
@@ -128,14 +117,15 @@ class GripperCommandExample:
                 print("Current position is : {0}".format(gripper_measure.finger[0].value))
                 if gripper_measure.finger[0].value < 0.01:
                     break
-            else: # Else, no finger present in answer, end loop
+            else: # Else, no finger present, end loop
                 break
 
     def close_gripper(self):
         # Create the GripperCommand we will send
         gripper_command = Base_pb2.GripperCommand()
-        finger = gripper_command.gripper.finger.add()            
-
+        finger = gripper_command.gripper.finger.add()
+                    
+        #Change the gripper movement velocity value
         gripper_command.mode = Base_pb2.GRIPPER_SPEED
         finger.value = -0.2
         self.base.SendGripperCommand(gripper_command)
@@ -149,7 +139,7 @@ class GripperCommandExample:
                 if gripper_measure.finger[0].value == 0.00:
                     print("Gripper closed")
                     break
-            else: # Else, no finger present in answer, end loop
+            else: # Else, no finger present , end loop
                 break
 
 def singleLevelServoingMode():
@@ -166,7 +156,7 @@ def home_position(base):
     action_list = base.ReadAllActions(action_type)
     action_handle = None
     for action in action_list.action_list: #search through the library of saved movement
-        if action.name == "sweepHome":#bottlehome
+        if action.name == "sweepHome":
             action_handle = action.handle
             
     if action_handle == None:
@@ -200,11 +190,8 @@ def feedbackPosition(base, base_cyclic):
     feedbackY.append(feedback.base.tool_pose_y) 
     feedbackZ.append(feedback.base.tool_pose_z)
 
-def show_distance(event, x, y, args, params):
-    global point
-    point = (x, y)
-
-#Define initial valaues for the variables
+#################################################
+#Define initial valaues for the variables and create arrays
 follow = False
 grip = False
 closeToObject = False
@@ -229,23 +216,28 @@ feedbackX = []
 feedbackY = []
 feedbackZ = []
 
+#Initial value for the center point of the bounding box
 point = (400, 300)
-    
+
+#Create the Depth Camera object (realsense_depth.py)
 dc = DepthCamera()
-#Load the YOLO object detection model
+
+#Load the YOLO object detection model based on the initial selection
 if SELECTED_OBJECT == 'bottle':
     model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+    print('Model has been downloaded and created')
+    time.sleep(5)
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 else:
     model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/old-best.pt')  # local model
+    print('Model has been downloaded and created')
+    time.sleep(5)
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best1.pt')
 
-print('Model has been downloaded and created')
-time.sleep(5)
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-import utilities
-
 args = utilities.parseConnectionArguments()
+
+#################################################
 #Start the main loop
 while True:
     with utilities.DeviceConnection.createTcpConnection(args) as router:
@@ -275,8 +267,8 @@ while True:
                 if runOnce == False:
                     time.sleep(5)
                     runOnce = True
-                    
                 
+                #Acquire frames for object detection
                 ret, depth_frame, color_frame, depth_image = dc.get_frame()
 
                 result = model(color_frame)
@@ -299,6 +291,8 @@ while True:
                     #Calculate the distance from the middle of the camera frame view, to the middle of the object
                     x_distance = x_middle-width/2
                     y_distance = y_middle-height/2
+                    
+                    #Save values of PID inputs and the XYZ position of the end-effector
                     dataX.append(x_distance)
                     dataY.append(y_distance)
                     timePlot.append(prevLoopTime)
@@ -310,9 +304,10 @@ while True:
                     cv2.circle(color_frame, (int(width/2), int(height/2)), 5, (0, 0, 255), 2)
                     cv2.line(color_frame, (int(x_middle), int(y_middle)), (int(width/2), int(height/2)), (0,0,255), 2)
                     
-                    #Calculate the distance to the center of the object based on the depth camera
+                    
+                    #Acquire frames for depth calculation
                     ret, depth_aligned_frame, color_aligned_frame, distance_frame_depth = dc.get_aligned_frame()
-
+                    #Calculate the distance to the center of the object based on the depth camera
                     D = distance_frame_depth.get_distance(int(x_middle), int(y_middle))
                     D = round(D*100, 2)
                                    
@@ -343,9 +338,7 @@ while True:
                     
                     #Print data for debugging
                     print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta) + '\t' + 'Speed: ' + str(Poutput_Z))    
-                         
                     
-                    #Saturate the maximum output from the PID for both axis to 2m/s, as a sanity check
                     #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
                     if D<=DISTANCE_HARDCODED_THRESHOLD and centered:
                         closeToObject = True
@@ -363,7 +356,6 @@ while True:
                             velocities = [PIDoutput_X/50, PIDoutput_Y/50, Poutput_Z, -PIDoutput_Y*2, PIDoutput_X*2, 0]
                             sendSpeed(base, velocities)
                         
-            
                     #If the distance to the object is less then 11cm, stop moving and close the gripper, grabbing the object
                     if closeToObject:
                         example = GripperCommandExample(router)
@@ -388,20 +380,10 @@ while True:
 
                 if key & 0xFF == ord('q') or key == 27:
                     cv2.destroyAllWindows()
-                    break
-                if key & 0xFF == ord('g'): #or key == 27:
-                    if(grip ==True):
-                        grip = False
-                    else:
-                        grip = True
-                if key & 0xFF == ord('f'): #or key == 27:
-                    if(follow ==True):
-                        follow = False
-                    else:
-                        follow = True        
+                    break      
         finally:
+            #Save the feedback data to a excel sheet
             #Stop streaming the camera preview
-            #plt.plot(timePlot, dataX)
             data = pd.DataFrame({tuple(timePlot), tuple(dataX), tuple(dataY), tuple(feedbackX), tuple(feedbackY), tuple(feedbackZ)})
             data.to_excel('sample_data.xlsx', sheet_name='sheet1', index=False)
             dc.release()
