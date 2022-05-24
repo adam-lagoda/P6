@@ -7,17 +7,17 @@
 #   Kinova Kortex Lite Gen 3
 #   Intel L515
 #################################################
-# Target object Selection
+# Target object selection
 SELECTED_OBJECT = 'bottle' #bottle or weed
 
 if SELECTED_OBJECT == 'bottle':
     TARGET_X = 0
     TARGET_Y = 170 #110 plant 170 bottle
-    DISTANCE_HARDCODED_TIME = 3.75 #3.75 dor bottle 3 for plant
+    DISTANCE_HARDCODED_TIME = 3.75 #3.75 for bottle 3 for plant
 else:
     TARGET_X = 0
-    TARGET_Y = 20 #110 plant 170 bottle
-    DISTANCE_HARDCODED_TIME = 3.75 #3.75 dor bottle 3 for plant
+    TARGET_Y = 20 #20 plant 170 bottle
+    DISTANCE_HARDCODED_TIME = 3.65 #3.75 for bottle 3 for plant
 #################################################
 #PID coefficients setup
 KP=0.025 #0.025 #0.05 oscillating #o.008 old
@@ -25,7 +25,7 @@ KI=0.001 #0.001
 KD=0.001 #0.001
 
 #Allowed boundaries when the object is considered "centered"
-THRESHOLD_CENTERING = 35 #25
+THRESHOLD_CENTERING = 25 #35
 
 #Distance after which the robot will move the remaining distance to the object without detection or centering
 DISTANCE_HARDCODED_THRESHOLD = 27
@@ -85,7 +85,7 @@ def sendSpeed(base, velocities):
     twist.angular_x = velocities[3]
     twist.angular_y = velocities[4]
     twist.angular_z = velocities[5]
-    #Sedn values to the base
+    #Send values to the base
     base.SendTwistCommand(command)
 
 class GripperCommandExample:
@@ -136,9 +136,14 @@ class GripperCommandExample:
             gripper_measure = self.base.GetMeasuredGripperMovement(gripper_request)
             if len (gripper_measure.finger):
                 print("Current speed is : {0}".format(gripper_measure.finger[0].value))
-                if gripper_measure.finger[0].value == 0.00:
-                    print("Gripper closed")
-                    break
+                if SELECTED_OBJECT == 'bottle':
+                    if gripper_measure.finger[0].value == 0.0: #old ==0.00 #>= -0.001
+                        print("Gripper closed")
+                        break
+                else:
+                    if gripper_measure.finger[0].value >= -0.001: #old ==0.00 #>= -0.001
+                        print("Gripper closed")
+                        break
             else: # Else, no finger present , end loop
                 break
 
@@ -193,7 +198,6 @@ def feedbackPosition(base, base_cyclic):
 #################################################
 #Define initial valaues for the variables and create arrays
 follow = False
-grip = False
 closeToObject = False
 gripperClosed = False
 runOnce = False
@@ -230,10 +234,10 @@ if SELECTED_OBJECT == 'bottle':
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 else:
     model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/old-best.pt')  # local model
+    #model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')
     print('Model has been downloaded and created')
     time.sleep(5)
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best1.pt')
 
 args = utilities.parseConnectionArguments()
 
@@ -338,36 +342,36 @@ while True:
                     
                     #Print data for debugging
                     print('X distance: ' + str(round(x_distance,2)) + '\t' + 'Y distance: ' + str(round(y_distance,2)) + '\t' + 'Distance:' + str(D) + '\t' + "timeDelta: " + str(timeDelta) + '\t' + 'Speed: ' + str(Poutput_Z))    
-                    
-                    #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
-                    if D<=DISTANCE_HARDCODED_THRESHOLD and centered:
-                        closeToObject = True
-                        velocities = [0, 0, 0.05, 0 ,0 ,0]
-                        sendSpeed(base, velocities)
-                        time.sleep(DISTANCE_HARDCODED_TIME)
-                    elif(D>DISTANCE_HARDCODED_THRESHOLD) or not centered:
-                        closeToObject = False
-                        if(abs(x_distance) > abs(TARGET_X + THRESHOLD_CENTERING) or abs(y_distance) > abs(TARGET_Y + THRESHOLD_CENTERING) or abs(y_distance) < abs(TARGET_Y - THRESHOLD_CENTERING)):
-                            centered = False
-                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
+                    if follow:
+                        #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
+                        if D<=DISTANCE_HARDCODED_THRESHOLD and centered:
+                            closeToObject = True
+                            velocities = [0, 0, 0.05, 0 ,0 ,0]
                             sendSpeed(base, velocities)
-                        else:
-                            centered = True
-                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, Poutput_Z, -PIDoutput_Y*2, PIDoutput_X*2, 0]
-                            sendSpeed(base, velocities)
+                            time.sleep(DISTANCE_HARDCODED_TIME)
+                        elif(D>DISTANCE_HARDCODED_THRESHOLD) or not centered:
+                            closeToObject = False
+                            if(abs(x_distance) > abs(TARGET_X + THRESHOLD_CENTERING) or abs(y_distance) > abs(TARGET_Y + THRESHOLD_CENTERING) or abs(y_distance) < abs(TARGET_Y - THRESHOLD_CENTERING)):
+                                centered = False
+                                velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
+                                sendSpeed(base, velocities)
+                            else:
+                                centered = True
+                                velocities = [PIDoutput_X/50, PIDoutput_Y/50, Poutput_Z, -PIDoutput_Y*2, PIDoutput_X*2, 0]
+                                sendSpeed(base, velocities)
+                            
+                        #If the distance to the object is less then 11cm, stop moving and close the gripper, grabbing the object
+                        if closeToObject:
+                            example = GripperCommandExample(router)
+                            velocities = [0, 0, 0, 0, 0, 0]
+                            sendSpeed(base, velocities)   
+                            example.close_gripper()
+                            #time.sleep(5)
+                            gripperClosed = True
                         
-                    #If the distance to the object is less then 11cm, stop moving and close the gripper, grabbing the object
-                    if closeToObject:
-                        example = GripperCommandExample(router)
-                        velocities = [0, 0, 0, 0, 0, 0]
-                        sendSpeed(base, velocities)   
-                        example.close_gripper()
-                        #time.sleep(5)
-                        gripperClosed = True
-                    
-                    #If the end effector is close to the object and the gripper is closed, break the inner loop and start over, by returning to home position
-                    if closeToObject and gripperClosed:
-                        break
+                        #If the end effector is close to the object and the gripper is closed, break the inner loop and start over, by returning to home position
+                        if closeToObject and gripperClosed:
+                            break
                 except:
                     velocities = [0, 0, 0, 0, 0, 0]
                     sendSpeed(base, velocities)
@@ -380,10 +384,15 @@ while True:
 
                 if key & 0xFF == ord('q') or key == 27:
                     cv2.destroyAllWindows()
-                    break      
+                    break    
+                if key & 0xFF == ord('f'):
+                    if(follow ==True):
+                        follow = False
+                    else:
+                        follow = True 
         finally:
             #Save the feedback data to a excel sheet
             #Stop streaming the camera preview
             data = pd.DataFrame({tuple(timePlot), tuple(dataX), tuple(dataY), tuple(feedbackX), tuple(feedbackY), tuple(feedbackZ)})
-            data.to_excel('sample_data.xlsx', sheet_name='sheet1', index=False)
+            data.to_excel('weedDepthTake3.xlsx', sheet_name='sheet1', index=False)
             dc.release()

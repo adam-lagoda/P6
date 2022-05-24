@@ -17,8 +17,10 @@ def show_distance(event, x, y, args, params):
 # Initialize Camera Intel Realsense
 dc = DepthCamera()
 
-model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+#model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/old-best.pt')
+#model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best1.pt')
 time.sleep(5)  
 print('Model has been downloaded and created') 
 
@@ -31,7 +33,7 @@ while True:
 
     result = model(color_frame)
     objs = result.pandas().xyxy[0]
-    objs_name = objs.loc[objs['name'] == 'bottle']
+    objs_name = objs.loc[objs['name'] == 'weed']
     
     height = color_frame.shape[0]
     width = color_frame.shape[1]
@@ -60,13 +62,14 @@ while True:
         #dx ,dy, dz = rs.rs2_deproject_pixel_to_point(depth_frame, [x_middle,y_middle], depth)
         #distance = math.sqrt(((dx)**2) + ((dy)**2) + ((dz)**2))
         #print("Distance: ", distance)
+        cv2.putText(color_frame, "{}cm".format(distance), (int(x_middle), int(y_middle) - 20), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 0), 2)
+
     except:
         print("Object not detected")
     # Show distance for a specific point
     #cv2.circle(color_frame, point, 4, (0, 0, 255))
     #distance = depth_frame[x_middle, y_middle]
     #print("Distance: ", distance)
-    #cv2.putText(color_frame, "{}mm".format(distance), (point[0], point[1] - 20), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 0), 2)
     
     
     

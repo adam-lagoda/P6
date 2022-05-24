@@ -13,15 +13,24 @@ KD=0 #0.001
 TARGET_X = 0
 TARGET_Y = 100 #100 plant 170 bottle
 
-THRESHOLD = 30
+#THRESHOLD = 30
 
 TARGET_Z = 10
 KP_Z = 0.005
+
+#Allowed boundaries when the object is considered "centered"
+THRESHOLD_CENTERING = 25 #35
+
+#Distance after which the robot will move the remaining distance to the object without detection or centering
+DISTANCE_HARDCODED_THRESHOLD = 27
+
+DISTANCE_HARDCODED_TIME = 3 #3.75 for bottle 3 for plant
+
 #################################################
 #Camera lens parameters setup
-P_PIXEL_WIDTH = 162      #Pixel of object with distance D_initial #43 for fisheye #94 without #plant 157
-D_KNOWN_DISTANCE = 56   #Measured distance from camera to object in cm #52 for fishye #40 without #plant 46
-W_KNOWN_WIDTH = 17.5     #Known width of object in cm 5.7 #plant 6
+P_PIXEL_WIDTH = 200      #Pixel of object with distance D_initial #43 for fisheye #94 without #plant 157
+D_KNOWN_DISTANCE = 46   #Measured distance from camera to object in cm #52 for fishye #40 without #plant 46
+W_KNOWN_WIDTH = 6    #Known width of object in cm 5.7 #plant 6
 #################################################
 #Constants definitions
 TIMEOUT_DURATION = 20
@@ -101,7 +110,7 @@ class GripperCommandExample:
         finger = gripper_command.gripper.finger.add()
 
         gripper_command.mode = Base_pb2.GRIPPER_SPEED
-        finger.value = 0.1
+        finger.value = 0.2
         self.base.SendGripperCommand(gripper_command)
         gripper_request = Base_pb2.GripperRequest()    
 
@@ -122,7 +131,7 @@ class GripperCommandExample:
         finger = gripper_command.gripper.finger.add()            
 
         gripper_command.mode = Base_pb2.GRIPPER_SPEED
-        finger.value = -0.1
+        finger.value = -0.2
         self.base.SendGripperCommand(gripper_command)
         gripper_request = Base_pb2.GripperRequest()    
         # Wait for reported speed to be 0
@@ -220,7 +229,8 @@ config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
 profile = pipeline.start(config)
 
 #Load the YOLO object detection model
-model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+#model = torch.hub.load('ultralytics/yolov5', 'yolov5n', pretrained=True)
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/old-best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='C:\Users\bahar\Desktop\train 32\best.pt')  # local model
 #model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best1.pt')
@@ -280,7 +290,7 @@ while True:
                 #Use the created model to detect the object in the image, in this case a bottle
                 result = model(color_image)
                 objs = result.pandas().xyxy[0]
-                objs_name = objs.loc[objs['name'] == 'bottle'] #bottle #weed
+                objs_name = objs.loc[objs['name'] == 'weed'] #bottle #weed
                 
                 try:
                     #Calculate the middle point of the detected object, based on its bounding box dimensions
@@ -337,34 +347,36 @@ while True:
                     
                     
                     #Saturate the maximum output from the PID for both axis to 2m/s, as a sanity check
-                    #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
-                    if D<=11:
-                        closeToObject = True
-                        velocities = [0, 0, 0.05, 0 ,0 ,0]
-                        sendSpeed(base, velocities)
-                        time.sleep(1.1)
-                    elif(D>11):
-                        closeToObject = False
-                        if(abs(x_distance) > (TARGET_X + THRESHOLD) or abs(y_distance) > (TARGET_Y + THRESHOLD) or abs(y_distance) < (TARGET_Y - THRESHOLD)):
-                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
+                    if follow:
+                        #If the distance to the object is more then 11cm, start centering and moving towards it, provided the boundaries are met
+                        if D<=DISTANCE_HARDCODED_THRESHOLD and centered:
+                            closeToObject = True
+                            velocities = [0, 0, 0.05, 0 ,0 ,0]
                             sendSpeed(base, velocities)
-                        else:
-                            velocities = [PIDoutput_X/50, PIDoutput_Y/50, Poutput_Z, -PIDoutput_Y*2, PIDoutput_X*2, 0]
-                            sendSpeed(base, velocities)
+                            time.sleep(DISTANCE_HARDCODED_TIME)
+                        elif(D>DISTANCE_HARDCODED_THRESHOLD) or not centered:
+                            closeToObject = False
+                            if(abs(x_distance) > abs(TARGET_X + THRESHOLD_CENTERING) or abs(y_distance) > abs(TARGET_Y + THRESHOLD_CENTERING) or abs(y_distance) < abs(TARGET_Y - THRESHOLD_CENTERING)):
+                                centered = False
+                                velocities = [PIDoutput_X/50, PIDoutput_Y/50, 0, -PIDoutput_Y*2, PIDoutput_X*2, 0]
+                                sendSpeed(base, velocities)
+                            else:
+                                centered = True
+                                velocities = [PIDoutput_X/50, PIDoutput_Y/50, Poutput_Z, -PIDoutput_Y*2, PIDoutput_X*2, 0]
+                                sendSpeed(base, velocities)
+                            
+                        #If the distance to the object is less then 11cm, stop moving and close the gripper, grabbing the object
+                        if closeToObject:
+                            example = GripperCommandExample(router)
+                            velocities = [0, 0, 0, 0, 0, 0]
+                            sendSpeed(base, velocities)   
+                            example.close_gripper()
+                            #time.sleep(5)
+                            gripperClosed = True
                         
-            
-                    #If the distance to the object is less then 11cm, stop moving and close the gripper, grabbing the object
-                    if closeToObject:
-                        example = GripperCommandExample(router)
-                        velocities = [0, 0, 0, 0, 0, 0]
-                        sendSpeed(base, velocities)   
-                        example.close_gripper()
-                        #time.sleep(5)
-                        gripperClosed = True
-                    
-                    #If the end effector is close to the object and the gripper is closed, break the inner loop and start over, by returning to home position
-                    if closeToObject and gripperClosed:
-                        break
+                        #If the end effector is close to the object and the gripper is closed, break the inner loop and start over, by returning to home position
+                        if closeToObject and gripperClosed:
+                            break
                 except:
                     velocities = [0, 0, 0, 0, 0, 0]
                     sendSpeed(base, velocities)
@@ -391,5 +403,5 @@ while True:
             #Stop streaming the camera preview
             #plt.plot(timePlot, dataX)
             data = pd.DataFrame({tuple(timePlot), tuple(dataX), tuple(dataY), tuple(feedbackX), tuple(feedbackY), tuple(feedbackZ)})
-            data.to_excel('sample_data.xlsx', sheet_name='sheet1', index=False)
+            data.to_excel('weedFocalTake1.xlsx', sheet_name='sheet1', index=False)
             pipeline.stop()
