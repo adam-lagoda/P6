@@ -93,6 +93,7 @@ point = (400, 300)
 
 dataX = []
 dataY = []
+timePlot = []
 
 left = True
 
@@ -110,7 +111,7 @@ print('Model has been downloaded and created')
 # Create mouse event
 cv2.namedWindow("Color frame")
 cv2.setMouseCallback("Color frame", show_distance)
-prevTime = perf_counter_ns()/1e9
+prevTime = perf_counter_ns()#/1e9
 
 args = utilities.parseConnectionArguments()
 while True:
@@ -130,7 +131,7 @@ while True:
 
         try:
             while True:
-                ret, depth_frame, color_frame, depth_image = dc.get_frame()
+                ret, color_frame = dc.get_frame()
 
                 result = model(color_frame)
                 objs = result.pandas().xyxy[0]
@@ -142,7 +143,7 @@ while True:
                 x_middle = 0
                 y_middle = 0
                 try:
-                    currentTime = perf_counter_ns()/1e9
+                    currentTime = perf_counter_ns()#/1e9
                     obj = objs_name.iloc[0]
                     x_middle = obj.xmin + (obj.xmax-obj.xmin)/2
                     y_middle = obj.ymin + (obj.ymax-obj.ymin)/2
@@ -155,13 +156,15 @@ while True:
                     
                     dataX.append(x_distance)
                     dataY.append(y_distance)
+                    plotTime = currentTime/1e9
+                    timePlot.append(plotTime)
                     
                     cv2.rectangle(color_frame, (int(obj.xmin), int(obj.ymin)), (int(obj.xmax), int(obj.ymax)), (0,255,0),2)
                     cv2.circle(color_frame, (int(x_middle), int(y_middle)), 5, (0, 255, 0), 2)
                     cv2.circle(color_frame, (int(width/2), int(height/2)), 5, (0, 0, 255), 2)
                     cv2.line(color_frame, (int(x_middle), int(y_middle)), (int(width/2), int(height/2)), (0,0,255), 2)
 
-                    ret, depth_aligned_frame, color_aligned_frame, distance_frame_depth = dc.get_aligned_frame()
+                    ret, distance_frame_depth = dc.get_aligned_frame()
 
                     distance = distance_frame_depth.get_distance(int(x_middle), int(y_middle))
                     distance = round(distance*100, 2)
@@ -172,7 +175,7 @@ while True:
                     #print("Distance: ", distance)
                     cv2.putText(color_frame, "{}cm".format(distance), (int(x_middle), int(y_middle) - 20), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 0), 2)
 
-                    if (currentTime - prevTime < 1):
+                    if (currentTime - prevTime < 1000000000):
                         velocities = [0, 0, 0, 0, 0 ,0]
                         sendSpeed(base, velocities)
                     else:
@@ -196,6 +199,6 @@ while True:
         finally:
             #Save the feedback data to a excel sheet
             #Stop streaming the camera preview
-            data = pd.DataFrame({tuple(dataX), tuple(dataY)})
-            data.to_excel('CameraTransient.xlsx', sheet_name='sheet1', index=False)
+            data = pd.DataFrame({tuple(timePlot),tuple(dataX)})
+            data.to_excel('CameraTransientWithTime.xlsx', sheet_name='sheet1', index=False)
             dc.release()

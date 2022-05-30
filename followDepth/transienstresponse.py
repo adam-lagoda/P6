@@ -102,9 +102,9 @@ while True:
         #Move the robot to the home position
         home_position(base)
     
-        velocities = [1, 0, 0, 0 ,0 ,0]
+        velocities = [0, 1, 0, 0 ,0 ,0]
         sendSpeed(base, velocities)
         time.sleep(1)
-        velocities = [-1, 0, 0, 0 ,0 ,0]
+        velocities = [0, -1, 0, 0 ,0 ,0]
         sendSpeed(base, velocities)
         time.sleep(1)   
