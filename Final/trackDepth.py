@@ -7,7 +7,7 @@
 #   Intel L515
 
 # Target object selection
-SELECTED_OBJECT = 'bottle' #bottle or weed
+SELECTED_OBJECT = 'weed' #bottle or weed
 
 if SELECTED_OBJECT == 'bottle':
     TARGET_X = 0
@@ -15,8 +15,8 @@ if SELECTED_OBJECT == 'bottle':
     DISTANCE_HARDCODED_TIME = 3.75
 else:
     TARGET_X = 0
-    TARGET_Y = 20
-    DISTANCE_HARDCODED_TIME = 3.65
+    TARGET_Y = 30
+    DISTANCE_HARDCODED_TIME = 3.9
 
 # PID coefficients setup
 KP=0.025 
@@ -142,7 +142,8 @@ class GripperCommandExample:
                         print("Gripper closed")
                         break
                 else:
-                    if gripper_measure.finger[0].value >= -0.001:
+                    #if gripper_measure.finger[0].value >= -0.001:
+                    if gripper_measure.finger[0].value == 0.0:
                         print("Gripper closed")
                         break
             else: # Else, no finger present , end loop
@@ -234,7 +235,6 @@ if SELECTED_OBJECT == 'bottle':
     args = utilities.parseConnectionArguments()
 else:
     model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/old-best.pt')  #  local model
-    # model = torch.hub.load('ultralytics/yolov5', 'custom', path='path/to/best.pt')
     print('Model has been downloaded and created')
     time.sleep(5)
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -360,6 +360,7 @@ while True:
                         
                         # If the end effector is close to the object and the gripper is closed, break the inner loop and start over, by returning to home position
                         if closeToObject and gripperClosed:
+                            #dc.release()
                             break
                 except:
                     velocities = [0, 0, 0, 0, 0, 0]
@@ -372,6 +373,7 @@ while True:
 
                 if key & 0xFF == ord('q') or key == 27:
                     cv2.destroyAllWindows()
+                    dc.release()
                     break    
                 if key & 0xFF == ord('f'):
                     if(follow ==True):
@@ -383,4 +385,4 @@ while True:
             # Stop streaming the camera preview
             data = pd.DataFrame({tuple(timePlot), tuple(dataX), tuple(dataY), tuple(feedbackX), tuple(feedbackY), tuple(feedbackZ)})
             data.to_excel('weedDepthTake3.xlsx', sheet_name='sheet1', index=False)
-            dc.release()
+            #dc.release()

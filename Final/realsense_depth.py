@@ -18,7 +18,7 @@ class DepthCamera:
         # Configure the camera streaming properties
         config.enable_stream(rs.stream.depth, 1024, 768, rs.format.z16, 30) #1024x768
         config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30) #640 480 for both
-
+        
         # Start streaming
         self.pipeline.start(config)
         
